@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "module": "esnext",
+    "target": "esnext",
+    "moduleDetection": "force",
+    "outDir": "build",
+    "skipLibCheck": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "rootDir": ".",
+    "types": ["jest"]
+  },
+  "include": ["src", "test"],
+  "exclude": ["node_modules", "build"]
+}
