@@ -175,11 +175,13 @@ EnvManager throws descriptive errors for:
 
 Helper for ergonomic schema definition and type inference.
 
-### `EnvManager<T>(schema: T, source: RawEnvSource, config?: EnvManagerConfig)`
+### `EnvManager`
 
 Main class for environment management.
 
 #### Methods
+
+- `create<T>(schema: T, source: RawEnvSource, config?: EnvManagerConfig)` - Static method for instantiating new manager.
 
 - `data(): ParsedEnv<T>` — Returns the parsed, type-safe environment object.
 
