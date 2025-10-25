@@ -31,7 +31,7 @@ const envSchema = defineEnvSchema({
 });
 
 const envSource = process.env; // or import.meta.env
-const envManager = new EnvManager(envSchema, envSource);
+const envManager = EnvManager.create(envSchema, envSource);
 const env = envManager.data();
 
 console.log(env.API_URL); // string
@@ -74,7 +74,7 @@ const schema = defineEnvSchema({
   },
 });
 
-const envManager = new EnvManager(schema, process.env);
+const envManager = EnvManager.create(schema, process.env);
 const env = envManager.data();
 ```
 
@@ -115,7 +115,7 @@ const source = {
   NODE_ENV: "custom",
 };
 
-const envManager = new EnvManager(schema, source, {
+const envManager = EnvManager.create(schema, source, {
   enableScopes: true,
   scopes: {
     custom: "CUSTOM", // Adds a custom scope for NODE_ENV="custom"
@@ -139,7 +139,7 @@ const source = {
   NODE_ENV: "development",
 };
 
-const envManager = new EnvManager(schema, source, { enableScopes: true });
+const envManager = EnvManager.create(schema, source, { enableScopes: true });
 console.log(envManager.data().API_KEY); // "dev-key"
 ```
 
@@ -199,7 +199,7 @@ const schema = defineEnvSchema({
   DEBUG: { type: "boolean", required: false },
 });
 
-const envManager = new EnvManager(schema, process.env, {
+const envManager = EnvManager.create(schema, process.env, {
   enableScopes: true,
   scopes: { staging: "STAGE_" },
 });
