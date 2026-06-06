@@ -109,6 +109,33 @@ describe("EnvManager", () => {
       const manager = EnvManager.create(schema, source, config);
       expect(manager.data().STRING_VAR).toBe("custom-hello");
     });
+
+    it("falls back to un-prefixed variable if scoped one is missing", () => {
+      const schema = defineEnvSchema({
+        STRING_VAR: { type: "string", required: true },
+      });
+      // DEV_STRING_VAR is not present, should fallback to STRING_VAR
+      const source = { STRING_VAR: "fallback-hello", NODE_ENV: "development" };
+      const config: EnvManagerConfig = { enableScopes: true };
+      const manager = EnvManager.create(schema, source, config);
+      expect(manager.data().STRING_VAR).toBe("fallback-hello");
+    });
+
+    it("uses custom resolveScope function", () => {
+      const schema = defineEnvSchema({
+        STRING_VAR: { type: "string", required: true },
+      });
+      const source = {
+        STAGE_STRING_VAR: "stage-hello",
+        MY_ENV_VAR: "staging",
+      };
+      const config: EnvManagerConfig = {
+        enableScopes: true,
+        resolveScope: (src) => src.MY_ENV_VAR || null,
+      };
+      const manager = EnvManager.create(schema, source, config);
+      expect(manager.data().STRING_VAR).toBe("stage-hello");
+    });
   });
 
   it("supports boolean false and 0", () => {

@@ -31,7 +31,7 @@ class EnvManager<T extends EnvSchema> {
       throw new Error("[Env Manager] - Env source is undefined.");
     }
     this.source = source;
-    this.currentScope = this.initCurrentScope();
+    this.currentScope = this.initCurrentScope(config);
     this.schema = schema;
     if (config) {
       if (config.scopes) {
@@ -51,14 +51,17 @@ class EnvManager<T extends EnvSchema> {
     this._env = this.parseEnv();
   }
 
-  private initCurrentScope(): string | null {
+  private initCurrentScope(config?: EnvManagerConfig): string | null {
+    if (config?.resolveScope) {
+      return config.resolveScope(this.source);
+    }
     return this.source.NODE_ENV || null;
   }
 
   private getPrefixedName(name: string): string {
     if (this.enableScopes && this.currentScope) {
       const scope = this.currentScope;
-      const prefix = `${this.scopes[scope]}_` || "";
+      const prefix = this.scopes[scope] ? `${this.scopes[scope]}_` : "";
       return `${prefix}${name}`;
     }
     return name;
@@ -70,8 +73,17 @@ class EnvManager<T extends EnvSchema> {
     for (const key in this.schema) {
       const declaration = this.schema[key];
       const isRequired = declaration.required ?? true;
-      const rawName = this.getPrefixedName(key);
-      const rawValue = this.source[rawName];
+      let rawName = this.getPrefixedName(key);
+      let rawValue = this.source[rawName];
+
+      if (rawValue === undefined || rawValue === null) {
+        if (this.enableScopes && this.currentScope && rawName !== key) {
+          rawValue = this.source[key];
+          if (rawValue !== undefined && rawValue !== null) {
+            rawName = key;
+          }
+        }
+      }
 
       if (rawValue === undefined || rawValue === null) {
         if (isRequired) {

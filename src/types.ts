@@ -3,6 +3,7 @@ export type EnvManagerConfig = {
   enableScopes?: boolean;
   /** A mapping of scopes to their respective prefixes */
   scopes?: Record<string, string>;
+  resolveScope?: (source: RawEnvSource) => string | null;
 };
 
 export type EnvVariableType = "string" | "number" | "boolean";
