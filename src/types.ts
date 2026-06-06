@@ -6,24 +6,48 @@ export type EnvManagerConfig = {
   resolveScope?: (source: RawEnvSource) => string | null;
 };
 
-export type EnvVariableType = "string" | "number" | "boolean";
+export type EnvVariableType = "string" | "number" | "boolean" | "integer";
 
 export type PrimitiveMap<T extends EnvVariableType> = T extends "string"
   ? string
-  : T extends "number"
+  : T extends "number" | "integer"
   ? number
   : T extends "boolean"
   ? boolean
   : never;
 
-export type EnvDeclaration = {
-  [K in EnvVariableType]: {
-    type: K;
-    validator?: (value: PrimitiveMap<K>) => boolean | string;
-    required?: boolean;
-    sensitive?: boolean;
-  };
-}[EnvVariableType];
+export type BaseEnvDeclaration<K extends EnvVariableType> = {
+  type: K;
+  validator?: (value: PrimitiveMap<K>) => boolean | string;
+  required?: boolean;
+  sensitive?: boolean;
+};
+
+export type StringEnvDeclaration = BaseEnvDeclaration<"string"> & {
+  minLength?: number;
+  maxLength?: number;
+  pattern?: RegExp;
+};
+
+export type NumberEnvDeclaration = BaseEnvDeclaration<"number"> & {
+  min?: number;
+  max?: number;
+};
+
+export type IntegerEnvDeclaration = BaseEnvDeclaration<"integer"> & {
+  min?: number;
+  max?: number;
+};
+
+export type BooleanEnvDeclaration = BaseEnvDeclaration<"boolean"> & {
+  strict?: boolean;
+};
+
+export type EnvDeclaration =
+  | StringEnvDeclaration
+  | NumberEnvDeclaration
+  | IntegerEnvDeclaration
+  | BooleanEnvDeclaration;
 
 export type EnvSchema = {
   [key: string]: EnvDeclaration;

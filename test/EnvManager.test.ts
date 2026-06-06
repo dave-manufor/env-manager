@@ -152,6 +152,66 @@ describe("EnvManager", () => {
     expect(EnvManager.create(schema, sourceZero).data().BOOL_VAR).toBe(false);
   });
 
+  describe("Constraints", () => {
+    it("string length constraints", () => {
+      const schema = defineEnvSchema({
+        SHORT: { type: "string", minLength: 2 },
+        LONG: { type: "string", maxLength: 5 },
+      });
+      expect(() => EnvManager.create(schema, { SHORT: "a", LONG: "123" })).toThrow(/must be at least 2 characters/);
+      expect(() => EnvManager.create(schema, { SHORT: "ab", LONG: "123456" })).toThrow(/must be at most 5 characters/);
+      expect(EnvManager.create(schema, { SHORT: "ab", LONG: "12345" }).data().SHORT).toBe("ab");
+    });
+
+    it("string pattern constraint", () => {
+      const schema = defineEnvSchema({
+        PATTERN: { type: "string", pattern: /^[A-Z]+$/ },
+      });
+      expect(() => EnvManager.create(schema, { PATTERN: "abc" })).toThrow(/does not match the required pattern/);
+      expect(EnvManager.create(schema, { PATTERN: "ABC" }).data().PATTERN).toBe("ABC");
+    });
+
+    it("number min/max constraints", () => {
+      const schema = defineEnvSchema({
+        NUM: { type: "number", min: 10, max: 20 },
+      });
+      expect(() => EnvManager.create(schema, { NUM: "9" })).toThrow(/must be at least 10/);
+      expect(() => EnvManager.create(schema, { NUM: "21" })).toThrow(/must be at most 20/);
+      expect(EnvManager.create(schema, { NUM: "15" }).data().NUM).toBe(15);
+    });
+
+    it("integer type and constraints", () => {
+      const schema = defineEnvSchema({
+        INT: { type: "integer", min: 0, max: 5 },
+      });
+      expect(() => EnvManager.create(schema, { INT: "1.5" })).toThrow(/not a valid integer/);
+      expect(() => EnvManager.create(schema, { INT: "-1" })).toThrow(/must be at least 0/);
+      expect(() => EnvManager.create(schema, { INT: "6" })).toThrow(/must be at most 5/);
+      expect(EnvManager.create(schema, { INT: "3" }).data().INT).toBe(3);
+    });
+
+    it("boolean coercion with strict mode", () => {
+      const schema = defineEnvSchema({
+        STRICT_BOOL: { type: "boolean", strict: true },
+        LOOSE_BOOL: { type: "boolean", strict: false },
+      });
+      
+      expect(() => EnvManager.create(schema, { STRICT_BOOL: "yes", LOOSE_BOOL: "no" })).toThrow(/not a valid boolean. Use "true", "false", "1", or "0"/);
+      
+      const looseManager = EnvManager.create(schema, { STRICT_BOOL: "true", LOOSE_BOOL: "yes" });
+      expect(looseManager.data().LOOSE_BOOL).toBe(true);
+
+      expect(EnvManager.create(schema, { STRICT_BOOL: "true", LOOSE_BOOL: "no" }).data().LOOSE_BOOL).toBe(false);
+      expect(EnvManager.create(schema, { STRICT_BOOL: "true", LOOSE_BOOL: "ON" }).data().LOOSE_BOOL).toBe(true);
+      expect(EnvManager.create(schema, { STRICT_BOOL: "true", LOOSE_BOOL: "off" }).data().LOOSE_BOOL).toBe(false);
+      expect(EnvManager.create(schema, { STRICT_BOOL: "true", LOOSE_BOOL: "TRUE" }).data().LOOSE_BOOL).toBe(true);
+      expect(EnvManager.create(schema, { STRICT_BOOL: "true", LOOSE_BOOL: "1" }).data().LOOSE_BOOL).toBe(true);
+      expect(EnvManager.create(schema, { STRICT_BOOL: "true", LOOSE_BOOL: "0" }).data().LOOSE_BOOL).toBe(false);
+
+      expect(() => EnvManager.create(schema, { STRICT_BOOL: "true", LOOSE_BOOL: "invalid" })).toThrow(/Use "true", "false", "yes", "no", "1", "0", "on", or "off"/);
+    });
+  });
+
   it("handles empty schema", () => {
     const manager = EnvManager.create({}, baseSource);
     expect(manager.data()).toEqual({});
