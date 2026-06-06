@@ -20,6 +20,7 @@ export type EnvDeclaration = {
     type: K;
     validator?: (value: PrimitiveMap<K>) => boolean | string;
     required?: boolean;
+    sensitive?: boolean;
   };
 }[EnvVariableType];
 

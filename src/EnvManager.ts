@@ -84,6 +84,13 @@ class EnvManager<T extends EnvSchema> {
         }
       }
 
+      const maskValue = (msg: string) => {
+        if (declaration.sensitive && rawValue) {
+          return msg.split(rawValue).join("***");
+        }
+        return msg;
+      };
+
       let parsedValue: any;
       switch (declaration.type) {
         case "string":
@@ -91,7 +98,7 @@ class EnvManager<T extends EnvSchema> {
           if (declaration.validator) {
             const result = declaration.validator(parsedValue);
             const message = `[Env Manager] - Environment variable ${rawName} failed custom validation. ${
-              typeof result === "string" ? result : ""
+              typeof result === "string" ? maskValue(result) : ""
             }`;
             if (result !== true) {
               throw new Error(message);
@@ -108,7 +115,7 @@ class EnvManager<T extends EnvSchema> {
           if (declaration.validator) {
             const result = declaration.validator(parsedValue);
             const message = `[Env Manager] - Environment variable ${rawName} failed custom validation. ${
-              typeof result === "string" ? result : ""
+              typeof result === "string" ? maskValue(result) : ""
             }`;
             if (result !== true) {
               throw new Error(message);
@@ -130,7 +137,7 @@ class EnvManager<T extends EnvSchema> {
           if (declaration.validator) {
             const result = declaration.validator(parsedValue);
             const message = `[Env Manager] - Environment variable ${rawName} failed custom validation. ${
-              typeof result === "string" ? result : ""
+              typeof result === "string" ? maskValue(result) : ""
             }`;
             if (result !== true) {
               throw new Error(message);
@@ -148,6 +155,38 @@ class EnvManager<T extends EnvSchema> {
 
   data(): ParsedEnv<T> {
     return this._env;
+  }
+
+  mask(): Record<string, any> {
+    const masked: Record<string, any> = {};
+    for (const key in this.schema) {
+      const val = (this._env as any)[key];
+      if (val !== undefined) {
+        masked[key] = this.schema[key].sensitive ? "***" : val;
+      }
+    }
+    return masked;
+  }
+
+  summarize(): Record<string, { found: boolean; isDefault: boolean; sensitive: boolean; value: any }> {
+    const summary: Record<string, { found: boolean; isDefault: boolean; sensitive: boolean; value: any }> = {};
+    for (const key in this.schema) {
+      const rawName = this.getPrefixedName(key);
+      const rawValue = this.source[rawName];
+      const declaration = this.schema[key];
+      const found = rawValue !== undefined && rawValue !== null;
+      const isDefault = false; // To be implemented when defaults are added
+      const sensitive = declaration.sensitive ?? false;
+      const val = (this._env as any)[key];
+
+      summary[key] = {
+        found,
+        isDefault,
+        sensitive,
+        value: sensitive && val !== undefined ? "***" : val,
+      };
+    }
+    return summary;
   }
 }
 
