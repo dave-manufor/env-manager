@@ -156,4 +156,58 @@ describe("EnvManager", () => {
     const manager = EnvManager.create({}, baseSource);
     expect(manager.data()).toEqual({});
   });
+  describe("Security features", () => {
+    it("mask() returns redacted values for sensitive variables", () => {
+      const schema = defineEnvSchema({
+        SECRET: { type: "string", sensitive: true },
+        PUBLIC: { type: "string", sensitive: false },
+      });
+      const source = { SECRET: "my-secret", PUBLIC: "my-public" };
+      const manager = EnvManager.create(schema, source);
+      
+      const masked = manager.mask();
+      expect(masked.SECRET).toBe("***");
+      expect(masked.PUBLIC).toBe("my-public");
+      
+      // Original data should remain untouched
+      expect(manager.data().SECRET).toBe("my-secret");
+    });
+
+    it("summarize() returns correct metadata", () => {
+      const schema = defineEnvSchema({
+        SECRET: { type: "string", sensitive: true },
+        PUBLIC: { type: "string" },
+        MISSING_OPTIONAL: { type: "string", required: false },
+      });
+      const source = { SECRET: "my-secret", PUBLIC: "my-public" };
+      const manager = EnvManager.create(schema, source);
+      
+      const summary = manager.summarize();
+      expect(summary.SECRET).toEqual({ found: true, isDefault: false, sensitive: true, value: "***" });
+      expect(summary.PUBLIC).toEqual({ found: true, isDefault: false, sensitive: false, value: "my-public" });
+      expect(summary.MISSING_OPTIONAL).toEqual({ found: false, isDefault: false, sensitive: false, value: undefined });
+    });
+
+    it("redacts sensitive values from validation error messages", () => {
+      const schema = defineEnvSchema({
+        SECRET: {
+          type: "string",
+          sensitive: true,
+          validator: (val) => val === "valid" || `Invalid value provided: ${val}`,
+        },
+      });
+      const source = { SECRET: "super-secret" };
+      
+      expect(() => EnvManager.create(schema, source)).toThrow(
+        /Invalid value provided: \*\*\*/
+      );
+      
+      // And ensure it does NOT contain the secret
+      try {
+        EnvManager.create(schema, source);
+      } catch (e: any) {
+        expect(e.message).not.toContain("super-secret");
+      }
+    });
+  });
 });
