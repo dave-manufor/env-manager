@@ -88,55 +88,71 @@ class EnvManager<T extends EnvSchema> {
       switch (declaration.type) {
         case "string":
           parsedValue = String(rawValue);
-          if (declaration.validator) {
-            const result = declaration.validator(parsedValue);
-            const message = `[Env Manager] - Environment variable ${rawName} failed custom validation. ${
-              typeof result === "string" ? result : ""
-            }`;
-            if (result !== true) {
-              throw new Error(message);
-            }
+          if (declaration.minLength !== undefined && parsedValue.length < declaration.minLength) {
+            throw new Error(`[Env Manager] - Environment variable ${rawName} must be at least ${declaration.minLength} characters.`);
+          }
+          if (declaration.maxLength !== undefined && parsedValue.length > declaration.maxLength) {
+            throw new Error(`[Env Manager] - Environment variable ${rawName} must be at most ${declaration.maxLength} characters.`);
+          }
+          if (declaration.pattern && !declaration.pattern.test(parsedValue)) {
+            throw new Error(`[Env Manager] - Environment variable ${rawName} does not match the required pattern.`);
           }
           break;
         case "number":
+        case "integer":
           parsedValue = Number(rawValue);
           if (isNaN(parsedValue)) {
             throw new Error(
               `[Env Manager] - Environment variable ${rawName} is not a valid number.`
             );
           }
-          if (declaration.validator) {
-            const result = declaration.validator(parsedValue);
-            const message = `[Env Manager] - Environment variable ${rawName} failed custom validation. ${
-              typeof result === "string" ? result : ""
-            }`;
-            if (result !== true) {
-              throw new Error(message);
-            }
+          if (declaration.type === "integer" && !Number.isInteger(parsedValue)) {
+            throw new Error(`[Env Manager] - Environment variable ${rawName} is not a valid integer.`);
+          }
+          if (declaration.min !== undefined && parsedValue < declaration.min) {
+            throw new Error(`[Env Manager] - Environment variable ${rawName} must be at least ${declaration.min}.`);
+          }
+          if (declaration.max !== undefined && parsedValue > declaration.max) {
+            throw new Error(`[Env Manager] - Environment variable ${rawName} must be at most ${declaration.max}.`);
           }
           break;
         case "boolean":
-          if (
-            rawValue !== "true" &&
-            rawValue !== "false" &&
-            rawValue !== "1" &&
-            rawValue !== "0"
-          ) {
-            throw new Error(
-              `[Env Manager] - Environment variable ${rawName} is not a valid boolean. Use "true", "false", "1", or "0".`
-            );
-          }
-          parsedValue = rawValue === "true" || rawValue === "1";
-          if (declaration.validator) {
-            const result = declaration.validator(parsedValue);
-            const message = `[Env Manager] - Environment variable ${rawName} failed custom validation. ${
-              typeof result === "string" ? result : ""
-            }`;
-            if (result !== true) {
-              throw new Error(message);
+          const strict = declaration.strict ?? true;
+          const lowerRaw = String(rawValue).toLowerCase();
+          if (strict) {
+            if (
+              lowerRaw !== "true" &&
+              lowerRaw !== "false" &&
+              lowerRaw !== "1" &&
+              lowerRaw !== "0"
+            ) {
+              throw new Error(
+                `[Env Manager] - Environment variable ${rawName} is not a valid boolean. Use "true", "false", "1", or "0".`
+              );
+            }
+            parsedValue = lowerRaw === "true" || lowerRaw === "1";
+          } else {
+            if (["true", "1", "yes", "on"].includes(lowerRaw)) {
+              parsedValue = true;
+            } else if (["false", "0", "no", "off"].includes(lowerRaw)) {
+              parsedValue = false;
+            } else {
+              throw new Error(
+                `[Env Manager] - Environment variable ${rawName} is not a valid boolean. Use "true", "false", "yes", "no", "1", "0", "on", or "off".`
+              );
             }
           }
           break;
+      }
+
+      if (declaration.validator) {
+        const result = (declaration.validator as any)(parsedValue);
+        const message = `[Env Manager] - Environment variable ${rawName} failed custom validation. ${
+          typeof result === "string" ? result : ""
+        }`;
+        if (result !== true) {
+          throw new Error(message);
+        }
       }
 
       (parsedEnv as any)[key] = parsedValue;
