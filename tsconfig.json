@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "lib": ["ESNext"],
+    "lib": ["ES2022"],
     "module": "esnext",
-    "target": "esnext",
+    "target": "ES2022",
     "moduleDetection": "force",
     "outDir": "build",
     "skipLibCheck": true,
@@ -10,8 +10,8 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "rootDir": ".",
-    "types": ["jest"]
+    "types": ["jest", "node"]
   },
-  "include": ["src", "test"],
+  "include": ["src", "test", "index.ts"],
   "exclude": ["node_modules", "build"]
 }
