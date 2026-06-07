@@ -1,17 +1,19 @@
 # EnvManager
 
-A robust, type-safe environment variable manager for Node.js and TypeScript projects. EnvManager provides schema-based validation,type parsing and inference, scoped environments, and ergonomic developer experience for managing environment variables in modern applications.
+A robust, type-safe environment variable manager for Node.js and TypeScript. EnvManager validates configuration at startup, infers types from your schema, supports scoped prefixes, and ships with zero runtime dependencies.
 
 ## Features
 
-- **Type-safe environment parsing**
-- **Schema-based validation**
-- **Optional and required variables**
-- **Boolean, number, and string support**
-- **Custom variable validation**
-- **Custom scopes (e.g., development, production, test)**
-- **Ergonomic API with full type inference**
-- **Zero runtime dependencies**
+- Type-safe parsing with full TypeScript inference
+- Schema-based validation with aggregated error reporting
+- Primitive types: `string`, `number`, `integer`, `boolean`, `array`, `json`, `enum`
+- Built-in constraints: length, pattern, min/max, boolean coercion modes
+- Default values with type narrowing
+- Custom validators and transforms
+- Scoped environments with custom resolvers
+- Sensitive value redaction for logging
+- Source merging, `.env` file loading, and test mocking utilities
+- Vite and Zod adapter helpers
 
 ## Installation
 
@@ -19,20 +21,20 @@ A robust, type-safe environment variable manager for Node.js and TypeScript proj
 npm install @davemanufor/env-manager
 ```
 
+Requires Node.js 18 or later.
+
 ## Quick Start
 
 ```typescript
 import { EnvManager, defineEnvSchema } from "@davemanufor/env-manager";
 
-const envSchema = defineEnvSchema({
-  API_URL: { type: "string" }, // required by default
+const schema = defineEnvSchema({
+  API_URL: { type: "string" },
   PORT: { type: "number", required: true },
   DEBUG: { type: "boolean", required: false },
 });
 
-const envSource = process.env; // or import.meta.env
-const envManager = EnvManager.create(envSchema, envSource);
-const env = envManager.data();
+const env = EnvManager.create(schema, process.env).data();
 
 console.log(env.API_URL); // string
 console.log(env.PORT); // number
@@ -41,28 +43,57 @@ console.log(env.DEBUG); // boolean | undefined
 
 ## Schema Definition
 
-Define your environment schema using `defineEnvSchema`. This enables full type parsing, inference and code completion:
+Use `defineEnvSchema` for ergonomic schema definition and type inference:
 
 ```typescript
 const schema = defineEnvSchema({
   DB_HOST: { type: "string", required: true },
-  DB_PORT: { type: "number", required: true },
+  DB_PORT: { type: "integer", required: true, min: 1, max: 65535 },
   USE_SSL: { type: "boolean", required: false },
+  ALLOWED_ORIGINS: { type: "array", separator: "," },
+  FEATURE_FLAGS: { type: "json", default: { beta: false } },
+  LOG_LEVEL: {
+    type: "enum",
+    values: ["debug", "info", "warn", "error"] as const,
+  },
 });
 ```
 
-### Custom Validation
+### Field options
 
-You can provide a `validator` function for any variable in your schema. The validator receives the parsed value and should return `true` if valid, or `false` otherwise. Validators can also return an error message for invalid values. If validation fails, EnvManager will throw an error at startup.
+| Option | Applies to | Description |
+|--------|-----------|-------------|
+| `required` | All | Whether the variable must be set. Defaults to `true`. |
+| `default` | All | Default value or `() => value` factory. Narrows the output type. |
+| `description` | All | Human-readable description for docs and `generateExample()`. |
+| `sensitive` | All | Redact in `safe()`, `summarize()`, and error messages. |
+| `transform` | All | Transform parsed value before validation. |
+| `validator` | All | Custom validation. Return `true`, `false`, or an error string. |
+| `min` / `max` | `number`, `integer` | Numeric bounds. |
+| `minLength` / `maxLength` | `string` | String length bounds. |
+| `pattern` | `string` | RegExp the value must match. |
+| `trim` | `string` | Trim whitespace before parsing. Default: `true`. |
+| `allowEmpty` | `string` | Treat `KEY=` as a valid empty string. Default: `false`. |
+| `strict` | `boolean` | Strict coercion (`true`/`false`/`1`/`0` only). Default: `true`. |
+| `separator` | `array` | Delimiter for array values. Default: `","`. |
+| `values` | `enum` | Allowed string literals. Infers a union type. |
 
-**Example:**
+### Empty string behavior
+
+By default, an empty string (e.g. `MY_VAR=` in a `.env` file) is treated as **missing**. This differs from raw dotenv behavior but prevents accidental empty values for required config.
+
+To accept empty strings, set `allowEmpty: true`:
+
+```typescript
+ALLOW_BLANK: { type: "string", allowEmpty: true }
+```
+
+### Custom validation
 
 ```typescript
 const schema = defineEnvSchema({
-  DB_HOST: { type: "string", required: true },
   DB_PORT: {
     type: "number",
-    required: true,
     validator: (port) => port > 0 && port < 65536,
   },
   ADMIN_EMAIL: {
@@ -73,142 +104,225 @@ const schema = defineEnvSchema({
         : "ADMIN_EMAIL must be a valid email",
   },
 });
-
-const envManager = EnvManager.create(schema, process.env);
-const env = envManager.data();
 ```
 
-If `DB_PORT` is not a valid port number, or `ADMIN_EMAIL` is not a valid email, an error will be thrown.
+Use `EnvManager.zodAdapter(zodSchema)` to bridge existing Zod schemas into a `validator`.
 
-## Scopes & Prefixes
+## Creating and validating
 
-EnvManager supports scoped environments, allowing you to use different prefixes for environment variables based on the current scope (such as development, production, test, or custom scopes). The scope is determined by the value of `NODE_ENV` in your environment source.
+### `EnvManager.create(schema, source, config?)`
 
-### Default Scopes
+Parses and validates. Throws `EnvValidationError` on failure.
 
-By default, EnvManager provides the following scopes:
+```typescript
+const manager = EnvManager.create(schema, process.env);
+const env = manager.data(); // frozen, type-safe object
+const port = manager.get("PORT"); // per-key access
+```
 
-- `development`: Prefix is `DEV`
-- `production`: Prefix is `PROD`
-- `test`: Prefix is `TEST`
-- `staging`: Prefix is `STAGE`
+### `EnvManager.validate(schema, source, config?)`
 
-When scopes are enabled, the manager will look for variables with the corresponding prefix based on the current `NODE_ENV` value. For example, if `NODE_ENV` is `production`, `API_KEY` will be read from `PROD_API_KEY`.
+Non-throwing validation for CLIs, health checks, or custom error handling:
 
-### Custom Scopes
+```typescript
+const result = EnvManager.validate(schema, process.env);
 
-You can add custom scopes or override the prefix for any default scope by including it in the `scopes` config. The key in the `scopes` object should match the expected `NODE_ENV` value, and the value is the corresponding prefix (without the trailing underscore, which is added automatically).
+if (!result.success) {
+  console.error(result.errors);
+} else {
+  console.log(result.data);
+  console.log(result.defaultsUsed); // Set of keys that used defaults
+}
+```
 
-**Adding a custom scope does not remove the default scopes.** You can override a default scope's prefix by specifying it in your custom scopes config.
+### `EnvValidationError`
 
-#### Example: Using and Overriding Scopes
+```typescript
+import { EnvValidationError } from "@davemanufor/env-manager";
+
+try {
+  EnvManager.create(schema, process.env);
+} catch (err) {
+  if (err instanceof EnvValidationError) {
+    console.error(err.errors); // string[]
+  }
+}
+```
+
+## Multiple sources
+
+Later sources override earlier ones:
+
+```typescript
+import { fromFile } from "@davemanufor/env-manager";
+
+const env = EnvManager.create(schema, [
+  fromFile(".env.defaults"),
+  fromFile(".env"),
+  process.env,
+]);
+```
+
+## Scopes and prefixes
+
+Enable scoped environments to read prefixed variables based on the current environment:
+
+```typescript
+import { defineEnvConfig } from "@davemanufor/env-manager";
+
+const manager = EnvManager.create(
+  schema,
+  source,
+  defineEnvConfig({
+    enableScopes: true,
+    scopes: {
+      custom: "CUSTOM",
+      production: "LIVE", // overrides default PROD prefix
+    },
+    resolveScope: (src) => src.APP_ENV ?? src.NODE_ENV ?? null,
+  })
+);
+```
+
+Default scope prefixes (merged with any custom `scopes`):
+
+| `NODE_ENV` | Prefix |
+|-----------|--------|
+| `development` | `DEV_` |
+| `production` | `PROD_` |
+| `test` | `TEST_` |
+| `staging` | `STAGE_` |
+
+When scopes are enabled and `NODE_ENV` is `production`, `API_KEY` is read from `PROD_API_KEY`. If the scoped key is missing, EnvManager falls back to the unprefixed name.
+
+Trailing underscores in scope prefixes are stripped automatically (`"STAGE_"` → `"STAGE"`).
+
+## Security and logging
+
+Mark secrets with `sensitive: true`:
 
 ```typescript
 const schema = defineEnvSchema({
-  API_KEY: { type: "string", required: true },
+  API_KEY: { type: "string", sensitive: true },
+  PORT: { type: "number" },
 });
-
-const source = {
-  DEV_API_KEY: "dev-key",
-  PROD_API_KEY: "prod-key",
-  CUSTOM_API_KEY: "custom-key",
-  NODE_ENV: "custom",
-};
-
-const envManager = EnvManager.create(schema, source, {
-  enableScopes: true,
-  scopes: {
-    custom: "CUSTOM", // Adds a custom scope for NODE_ENV="custom"
-    production: "LIVE", // Overrides the default prefix for NODE_ENV="production" to "LIVE_"
-  },
-});
-
-// If NODE_ENV is "custom", API_KEY is read from CUSTOM_API_KEY
-// If NODE_ENV is "production", API_KEY is read from LIVE_API_KEY
-// If NODE_ENV is "development", API_KEY is read from DEV_API_KEY
 ```
+
+Log safely at startup:
 
 ```typescript
-const schema = defineEnvSchema({
-  API_KEY: { type: "string", required: true },
-});
+console.log(manager.safe());
+// { API_KEY: "***", PORT: 3000 }
 
-const source = {
-  DEV_API_KEY: "dev-key",
-  PROD_API_KEY: "prod-key",
-  NODE_ENV: "development",
-};
-
-const envManager = EnvManager.create(schema, source, { enableScopes: true });
-console.log(envManager.data().API_KEY); // "dev-key"
+console.log(manager.summarize());
+// { API_KEY: { found: true, isDefault: false, sensitive: true, value: "***" }, ... }
 ```
 
-## Type Safety & Code Completion
+Never log `manager.data()` or raw `process.env` in production.
 
-All parsed environment variables are fully type-safe and provide code completion in your IDE:
+## Schema composition
+
+Combine schemas from different modules:
 
 ```typescript
-const env = envManager.data();
-// env.DB_HOST is string
-// env.DB_PORT is number
-// env.USE_SSL is boolean | undefined
+import { mergeSchemas } from "@davemanufor/env-manager";
+
+const dbSchema = defineEnvSchema({ DB_HOST: { type: "string" } });
+const authSchema = defineEnvSchema({ JWT_SECRET: { type: "string", sensitive: true } });
+const schema = mergeSchemas(dbSchema, authSchema);
 ```
 
-## Error Handling
+## Developer tooling
 
-EnvManager throws descriptive errors for:
+### Mock for tests
 
-- Missing required variables
-- Invalid number or boolean values
-- Missing scope when enabled
+```typescript
+const manager = EnvManager.mock(schema, {
+  PORT: 3000,
+  API_KEY: "test-key",
+});
+```
 
-## Use Cases
+### Generate `.env.example`
 
-- **Node.js API servers**: Validate and type environment variables at startup.
-- **Frontend build tools**: Parse and validate build-time environment variables.
-- **Monorepos**: Use custom scopes for multiple environments.
-- **Testing**: Easily mock environment sources for unit tests.
+```typescript
+import { generateExample } from "@davemanufor/env-manager";
+
+const content = generateExample(schema);
+// # Stripe API key
+// # Type: string (Required)
+// API_KEY=
+```
+
+### Load `.env` files
+
+```typescript
+import { fromFile } from "@davemanufor/env-manager";
+
+const source = fromFile(".env");
+```
+
+`fromFile` handles comments, `export` prefixes, quoted values, and inline comments. It does not support multiline values, variable interpolation, or escaped quotes. For full dotenv compatibility, use the `dotenv` package and pass the result to EnvManager.
+
+### Vite adapter
+
+```typescript
+const source = EnvManager.fromVite(import.meta.env);
+const manager = EnvManager.create(schema, source);
+```
+
+## Type utilities
+
+```typescript
+import type { InferParsedEnv } from "@davemanufor/env-manager";
+
+type Env = InferParsedEnv<typeof schema>;
+```
 
 ## API Reference
 
-### `defineEnvSchema<T>(schema: T): T`
+### Helpers
 
-Helper for ergonomic schema definition and type inference.
+| Function | Description |
+|----------|-------------|
+| `defineEnvSchema(schema)` | Define a schema with type inference |
+| `defineEnvConfig(config)` | Define manager config with type inference |
+| `mergeSchemas(a, b)` | Merge two schemas |
+| `fromFile(path)` | Parse a `.env` file into a source object |
+| `generateExample(schema, options?)` | Generate `.env.example` content |
 
-### `EnvManager`
+### `EnvManager` static methods
 
-Main class for environment management.
+| Method | Description |
+|--------|-------------|
+| `create(schema, source, config?)` | Parse, validate, and return a manager instance |
+| `validate(schema, source, config?)` | Validate without throwing |
+| `mock(schema, overrides?)` | Create a manager with test values |
+| `mergeSources(sources)` | Merge multiple source objects |
+| `fromVite(viteEnv)` | Normalize Vite env objects |
+| `zodAdapter(schema)` | Create a validator from a Zod-like schema |
+| `extend(a, b)` | **Deprecated.** Use `mergeSchemas()` |
 
-#### Methods
+### Instance methods
 
-- `create<T>(schema: T, source: RawEnvSource, config?: EnvManagerConfig)` - Static method for instantiating new manager.
+| Method | Description |
+|--------|-------------|
+| `data()` | Frozen, parsed environment object |
+| `get(key)` | Access a single variable |
+| `safe()` | Redacted copy for logging |
+| `summarize()` | Structured startup metadata |
 
-- `data(): ParsedEnv<T>` — Returns the parsed, type-safe environment object.
+## Error handling
 
-#### Config Options
+EnvManager throws `EnvValidationError` with an `.errors` array for:
 
-- `enableScopes?: boolean` — Enable scope-based variable prefixes.
-- `scopes?: Record<string, string>` — Custom scope prefix mapping.
+- Missing required variables
+- Invalid type coercion
+- Constraint violations (min/max, pattern, etc.)
+- Custom validator failures
+- Missing scope when scopes are enabled
 
-## Example: Full Usage
-
-```typescript
-import { EnvManager, defineEnvSchema } from "@davemanufor/env-manager";
-
-const schema = defineEnvSchema({
-  API_URL: { type: "string", required: true },
-  PORT: { type: "number", required: true },
-  DEBUG: { type: "boolean", required: false },
-});
-
-const envManager = EnvManager.create(schema, process.env, {
-  enableScopes: true,
-  scopes: { staging: "STAGE_" },
-});
-
-const env = envManager.data();
-console.log(env.API_URL, env.PORT, env.DEBUG);
-```
+All errors are aggregated and reported together.
 
 ## License
 

@@ -1,14 +1,22 @@
 {
   "name": "@davemanufor/env-manager",
-  "version": "1.0.2",
-  "description": "",
+  "version": "2.0.0",
+  "description": "Type-safe environment variable parser with schema validation, scoped prefixes, and zero runtime dependencies",
   "main": "build/index.js",
   "module": "build/index.mjs",
   "types": "build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.mjs",
+      "require": "./build/index.js"
+    }
+  },
   "scripts": {
     "build": "tsup",
-    "test": "jest",
-    "prepare": "npm run build"
+    "test": "jest && npm run test:types",
+    "test:types": "tsd",
+    "prepublishOnly": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -16,13 +24,17 @@
   },
   "files": [
     "build",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "env",
     "env parser",
     "env manager",
-    "parser"
+    "environment variables",
+    "validation",
+    "typescript",
+    "schema"
   ],
   "author": "David Manufor",
   "license": "MIT",
@@ -32,12 +44,17 @@
   "homepage": "https://envmanager.davman.dev",
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@types/node": "^22.15.21",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",
+    "tsd": "^0.31.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=18"
+  },
+  "tsd": {
+    "directory": "test"
   }
 }
